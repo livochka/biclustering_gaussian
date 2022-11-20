@@ -199,7 +199,7 @@ class GroupEstimatorGreedy(GroupEstimator):
             cov_constrained = cov_constrained + S[j] @ cov @ S[j]
         return cov_constrained
 
-    def find_best_group_for_feature(self, S_k, f_ind, cov, mu):
+    def find_best_group_for_feature(self, S_k, f_ind, cov, mu, data):
         max_S_k = -1
         max_likelihood = -10 ** 10
 
@@ -229,7 +229,7 @@ class GroupEstimatorGreedy(GroupEstimator):
         S = self.initialize_S(data)
         for f_ind in range(cov.shape[0]):
             S_k = deepcopy(S)
-            S = self.find_best_group_for_feature(S_k, f_ind, cov, mu)
+            S = self.find_best_group_for_feature(S_k, f_ind, cov, mu, data)
 
         diags = [np.diag(S[i]) for i in range(len(S))]
         self.predicted_groups = np.argmax(diags, axis=0)
