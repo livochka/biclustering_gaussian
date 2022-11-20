@@ -1,9 +1,12 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from sklearn.cluster import AgglomerativeClustering
+from copy import deepcopy
+from scipy.stats import multivariate_normal
 
-from data_generation import generate_one_component_negative_covariance, generate_one_component_simple, get_true_groups1
-from parameter_initialization import ParamsInitializer
+
+from utils.data_generation import generate_one_component_negative_covariance, generate_one_component_simple, get_true_groups1
+from utils.parameter_initialization import ParamsInitializer
 
 
 
@@ -52,6 +55,15 @@ class GroupEstimator(ABC):
             l_row = -0.5 * np.log(np.linalg.det(cov_constrained)) - 0.5 * (x - mu).T @ cov_constrained_inv @ (
                         x - mu)
             L += l_row
+        return L
+
+    @staticmethod
+    def full_likelihood(mu, cov_constrained, data):
+        L = 0
+        for j in range(data.shape[0]):
+            row = data[j, :]
+            l_row = multivariate_normal.pdf(row, mu, cov_constrained)
+            L += np.log(l_row)
         return L
 
 
@@ -168,26 +180,90 @@ class GroupEstimatorNumerical(GroupEstimator):
         self.predicted_groups = np.argmax(result, axis=0)
 
 
+class GroupEstimatorGreedy(GroupEstimator):
+
+    def __init__(self, n_clusters):
+        super().__init__(n_clusters)
+
+    def initialize_S(self, data):
+        initialization = ParamsInitializer(n_clusters=1)
+        z = initialization.intialize_z(data, "kmeans")
+        S = initialization.initialize_S(data, z, n_groups=self.n_clusters)[0]
+        return S
+
+    @staticmethod
+    def compute_cov_constrained(cov, S):
+        cov_constrained = np.zeros(cov.shape, dtype=float)
+
+        for j in range(len(S)):
+            cov_constrained = cov_constrained + S[j] @ cov @ S[j]
+        return cov_constrained
+
+    def find_best_group_for_feature(self, S_k, f_ind, cov, mu):
+        max_S_k = -1
+        max_likelihood = -10 ** 10
+
+        for group_index in range(len(S_k)):
+            # construct S_k by putting feature `f_ind` into group `group_index`
+            S_k_current = []
+
+            for ind in range(len(S_k)):
+                S = deepcopy(S_k[ind])
+                if ind == group_index:
+                    S[f_ind, f_ind] = 1
+                else:
+                    S[f_ind, f_ind] = 0
+                S_k_current.append(S)
+
+            traces = [np.trace(S) for S in S_k_current]
+            if min(traces) > 0:
+                cov_constrained = self.compute_cov_constrained(cov, S_k_current)
+                likelihood = self.compute_likelihood(mu, cov_constrained, data)
+                if likelihood >= max_likelihood:
+                    max_likelihood = likelihood
+                    max_S_k = S_k_current
+        return max_S_k
+
+    def fit(self, data):
+        mu, cov = self.mu_cov_MLE(data)
+        S = self.initialize_S(data)
+        for f_ind in range(cov.shape[0]):
+            S_k = deepcopy(S)
+            S = self.find_best_group_for_feature(S_k, f_ind, cov, mu)
+
+        diags = [np.diag(S[i]) for i in range(len(S))]
+        self.predicted_groups = np.argmax(diags, axis=0)
+
+
+
 if __name__ == "__main__":
     # for negative covariance: gamma=0.1, lambd=0.0001
     # for positive covariance:gamma=0.1, lambd=0.0001
     estimator1 = GroupEstimatorNumerical(n_clusters=3, gamma=0.001, lambd=0.0001, conv_epsilon=0.1, step=0.1)
     estimator2 = GroupEstimatorHierarchical(n_clusters=3)
+    estimator3 = GroupEstimatorGreedy(n_clusters=3)
     correct_groups = get_true_groups1()
 
-    N = 50
+    N = 200
+
     correct_1 = 0
     correct_2 = 0
+    correct_3 = 0
 
     for exp in range(N):
         data, true_cov = generate_one_component_simple()
-        estimator1.fit(data)
-        correct_1 += estimator1.is_correct(correct_groups)
+
+        # estimator1.fit(data)
+        # correct_1 += estimator1.is_correct(correct_groups)
 
         estimator2.fit(data)
         correct_2 += estimator2.is_correct(correct_groups)
 
-    print(correct_1 / N, correct_2 / N)
+        estimator3.fit(data)
+        correct_3 += estimator3.is_correct(correct_groups)
+
+
+    print(correct_1 / N, correct_2 / N, correct_3 / N)
 
         # print(estimator.predicted_groups)
 
