@@ -27,10 +27,8 @@ class ParamsInitializer:
         for cluster in range(self.n):
             z_k = z[cluster]
             sample = data[z_k == 1]
-            print(f"cluster {cluster} data shape:", sample.shape)
             S_k = np.cov(sample.T)
             S.append(S_k)
-            print(f"cluster {cluster} cov shape:", S_k.shape, "\n")
 
             pca_model = PCA(n_components=q)
             pca_model.fit(S_k)

@@ -72,8 +72,8 @@ def compare_estimators(data_gen_func, n_rows: int, estimators: dict, N=100):
 if __name__ == "__main__":
 
     N = 200
-    data_func = generate_positive
-    n_rows = 1600
+    data_func = generate_negative
+    n_rows = 80
     folder = "experiment_one_component_results/"
 
     exp_name = f"one_comp_{data_func.__name__}_rows_{n_rows}_N_{N}"
