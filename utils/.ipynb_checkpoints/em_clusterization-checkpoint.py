@@ -130,16 +130,15 @@ class AbstractEM:
         return self.z.argmax(axis=0)
 
 
+
 class ExpectationMaximization(AbstractEM):
 
-    def __init__(self, n_clusters, linkage, group_search_rng, shared_cov=False, metric=None):
+    def __init__(self, n_clusters, linkage, group_search_rng):
         self.cov = np.array([None in range(n_clusters)])
         self.corr = np.array([None in range(n_clusters)])
         self.D = np.array([None in range(n_clusters)])
         self.linkage = linkage
         self.group_search_rng = group_search_rng
-        self.shared_cov = shared_cov
-        self.metric = metric
         super().__init__(n_clusters)
 
     def fit(self, data, n_it=20):
@@ -164,6 +163,7 @@ class ExpectationMaximization(AbstractEM):
     @staticmethod
     def compute_corr_matrix(cov):
         sdr = np.sqrt(np.diag(cov))
+       # print("max diag", np.diag(cov).max())
         corr_matrix = np.diag(1 / sdr) @ cov @ np.diag(1 / sdr)
         return corr_matrix
 
@@ -176,12 +176,9 @@ class ExpectationMaximization(AbstractEM):
         return cov_constrained
 
     def _run_agglomerative_clustering(self, corr, n_groups):
-        model = AgglomerativeClustering(n_clusters=n_groups, linkage=self.linkage, metric=self.metric)
-        R = np.abs(corr)
-        if self.metric:
-            R = 1 - R
-        model.fit(R)
-        return model.labels_
+        model = AgglomerativeClustering(n_clusters=n_groups, linkage=self.linkage)
+        model.fit(np.abs(corr))
+        return  model.labels_
 
     def _get_labels_best_n_groups(self, corr):
         best_score = -1
@@ -210,8 +207,7 @@ class ExpectationMaximization(AbstractEM):
         z = np.zeros((self.n_clusters, data.shape[0]), dtype=float)
         log_probs = []
         for i in range(self.n_clusters):
-            cov = self._get_cov_matrix_cluster(i)
-            p = multivariate_normal.logpdf(data, self.mu[i], cov)
+            p = multivariate_normal.logpdf(data, self.mu[i], self.cov[i])
             log_probs.append(p + np.log(self.pi[i]))
         
         log_probs = np.array(log_probs)
@@ -231,40 +227,33 @@ class ExpectationMaximization(AbstractEM):
     def m_step(self, data):
         self.pi = self.n / data.shape[0]
 
-        # ESTIMATING mu_k
         mu = []
-        for i in range(self.n_clusters):
-            mu_k = (data * self.z[i].reshape([-1, 1])).sum(axis=0) / self.n[i]
-            mu.append(mu_k)
-
-        self.mu = np.array(mu)
-
         cov = []
+        D = []
+            
+
         reg_cov = 1e-6 * np.eye(data.shape[1])
 
-        # Estimating Sigma_k
         for i in range(self.n_clusters):
-            cov_k = self.z[i] * (data - self.mu[i]).T @ (data - self.mu[i]) / self.n[i] + reg_cov
-            cov.append(cov_k)
-        cov = np.array(cov)
+           #print(f"\rcluster = {i}/{self.n_clusters}", end="")
+            mu_k = (data * self.z[i].reshape([-1, 1])).sum(axis=0) / self.n[i]
+            mu.append(mu_k)
+            # print("z max:", self.z[i].reshape([-1, 1]).max())
+            # print("n[i], n", self.n[i], self.n)
+           # print(mu_k.max())
 
-        if self.shared_cov:
-            cov_shared = np.average(cov, weights=self.pi, axis=0)
-            corr = self.compute_corr_matrix(cov_shared)
-            D = self.estimate_D(corr)
+            cov_k = self.z[i] * (data - mu_k).T @ (data - mu_k) / self.n[i] + reg_cov
+            corr_k = self.compute_corr_matrix(cov_k)
+            # print("NaN/inf?", np.isnan(corr_k).sum(), np.isinf(corr_k).sum())
 
-            self.D = D
-            self.cov = self.compute_cov_constrained(cov_shared, D)
-        else:
-            D = []
-            for i in range(self.n_clusters):
-                corr = self.compute_corr_matrix(cov[i])
-                D_k = self.estimate_D(corr)
-                D.append(D_k)
-                cov[i, :, :] = self.compute_cov_constrained(cov[i], D_k)
+            D_k = self.estimate_D(corr_k)
+            D.append(D_k)
+            cov_constrained = self.compute_cov_constrained(cov_k, D_k)
+            cov.append(cov_constrained)
 
-            self.D = D
-            self.cov = cov
+        self.cov = np.array(cov)
+        self.mu = np.array(mu)
+        self.D = np.array(D)
 
     def loss(self, data):
         L = 0
@@ -272,24 +261,12 @@ class ExpectationMaximization(AbstractEM):
             row = data[j, :]
             l_row = 0
             for i in range(self.n_clusters):
-                cov = self._get_cov_matrix_cluster(i)
-                l_row += self.pi[i] * multivariate_normal.pdf(row, self.mu[i], cov)
+                l_row += self.pi[i] * multivariate_normal.pdf(row, self.mu[i], self.cov[i])
             L += np.log(l_row)
         return L
 
     def get_averge_cov(self):
         return self.cov.mean(axis=0)
-
-    def _get_cov_matrix_cluster(self, cluster_ind):
-        if self.shared_cov:
-            return self.cov
-        return self.cov[cluster_ind]
-
-    def _get_D_cluster(self, cluster_ind):
-        if self.shared_cov:
-            return self.D
-        return self.D[cluster_ind]
-
 
 
 class AlternatingECM(AbstractEM):
@@ -326,6 +303,7 @@ class AlternatingECM(AbstractEM):
         self.n = np.sum(self.z, axis=1)
         reg_cov = 1e-6 * np.eye(data.shape[1])
 
+
         D, T, S = self.initializer.initialize_DTS(data, self.z, self.q)
         self.D = D + reg_cov
         self.T = T
@@ -358,6 +336,23 @@ class AlternatingECM(AbstractEM):
         denom = probs.sum(axis=0)
         for i in range(self.n_clusters):
             z[i, :] = probs[i] / denom
+            
+#         # denominator Bayes rule
+#         denom = []
+#         for i in range(self.n_clusters):
+#             mu_k = self.mu[i]
+#             cov_k = self.B[i] @ self.T[i] @ self.B[i].T + self.D[i]
+#             denom.append(self.pi[i] * multivariate_normal.pdf(data, mu_k, cov_k))
+#         denom = np.array(denom).sum(axis=0)
+
+#         # nominator Bayes rule
+#         z = np.zeros((self.n_clusters, data.shape[0]), dtype=float)
+
+#         for i in range(self.n_clusters):
+#             mu_k = self.mu[i]
+#             cov_k = self.B[i] @ self.T[i] @ self.B[i].T + self.D[i]
+#             nom = self.pi[i] * multivariate_normal.pdf(data, mu_k, cov_k)
+#             z[i, :] = nom / denom
 
         # updating self.z
         self.z = z

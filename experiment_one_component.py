@@ -73,8 +73,8 @@ if __name__ == "__main__":
 
     N = 200
     data_func = generate_negative
-    n_rows = 80
-    folder = "experiment_one_component_results/"
+    n_rows = 500
+    folder = "experiment_one_component_results_v2/"
 
     exp_name = f"one_comp_{data_func.__name__}_rows_{n_rows}_N_{N}"
     estimators = {"numerical": GroupEstimatorNumerical(n_clusters=3, gamma=0.001, lambd=0.0001, conv_epsilon=0.1, step=0.1),

@@ -69,8 +69,9 @@ class GroupEstimator(ABC):
 
 class GroupEstimatorHierarchical(GroupEstimator):
 
-    def __init__(self, n_clusters, linkage="average"):
+    def __init__(self, n_clusters, linkage="average", metric=None):
         self.linkage = linkage
+        self.metric=metric
         super().__init__(n_clusters)
 
     @staticmethod
@@ -82,8 +83,12 @@ class GroupEstimatorHierarchical(GroupEstimator):
     def fit(self, data):
         mu, cov = self.mu_cov_MLE(data)
         corr_matrix = self.compute_corr_matrix(cov)
-        model = AgglomerativeClustering(n_clusters=self.n_clusters, linkage=self.linkage)
-        model.fit(np.abs(corr_matrix))
+        if self.metric:
+            model = AgglomerativeClustering(n_clusters=self.n_clusters, linkage=self.linkage, metric=self.metric)
+            model.fit(1 - np.abs(corr_matrix))
+        else:
+            model = AgglomerativeClustering(n_clusters=self.n_clusters, linkage=self.linkage)
+            model.fit(np.abs(corr_matrix))
 
         self.predicted_groups = model.labels_
 
