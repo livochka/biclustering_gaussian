@@ -1,4 +1,6 @@
-#@title Code of Clusterization
+"""
+This module implements hierarchical and factor-analyzer bi-clustering methods
+"""
 import numpy as np
 from scipy.stats import multivariate_normal
 from abc import ABC, abstractmethod
@@ -130,7 +132,7 @@ class AbstractEM:
         return self.z.argmax(axis=0)
 
 
-class ExpectationMaximization(AbstractEM):
+class HierarcicalBiclustering(AbstractEM):
 
     def __init__(self, n_clusters, linkage, group_search_rng, shared_cov=False, metric=None):
         self.cov = np.array([None in range(n_clusters)])
@@ -149,12 +151,12 @@ class ExpectationMaximization(AbstractEM):
             self.m_step(data)
             self.e_step(data)
 
-            # # CHECK CRITERIUM
-            # L = self.loss(data)
-            # self.L.append(L)
+            # CHECK CRITERIUM
+            L = self.loss(data)
+            self.L.append(L)
 
-            # if self.check_convergence():
-            #     break
+            if self.check_convergence(eps=0.00001):
+                break
         return step
 
     def _initialize_params(self, data, z_method="kmeans"):
@@ -291,8 +293,7 @@ class ExpectationMaximization(AbstractEM):
         return self.D[cluster_ind]
 
 
-
-class AlternatingECM(AbstractEM):
+class FactorAnalyzerBiclustering(AbstractEM):
 
     def __init__(self, n_clusters, q):
         self.q = q

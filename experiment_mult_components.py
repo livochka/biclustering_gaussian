@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from utils.em_clusterization import ExpectationMaximization, AlternatingECM
+from utils.clusterizers import HierarcicalBiclustering, FactorAnalyzerBiclustering
 from sklearn import metrics
 from itertools import permutations
 
@@ -58,14 +58,14 @@ if __name__ == "__main__":
     for exp_i in range(N):
         print(f"\r{exp_i}/{N}", end="")
         X, cov, y_true = common_cov_matrix(cov, n_rows_data)
-        em = ExpectationMaximization(n_clusters=3, linkage="average", group_search_rng=[2, 3, 4, 5, 6])
+        em = HierarcicalBiclustering(n_clusters=3, linkage="average", group_search_rng=[2, 3, 4, 5, 6])
         it1 = em.fit(X)
 
         result1["recovered_cov"].append(em.get_averge_cov())
         result1["n_iterations"].append(it1)
         result1["clustering_accuracy"].append(accuracy(y_true, em.z.argmax(axis=0)))
 
-        em2 = AlternatingECM(n_clusters=3, q=3)
+        em2 = FactorAnalyzerBiclustering(n_clusters=3, q=3)
         it2 = em2.fit(X)
         result2["recovered_cov"].append(em2.get_averge_cov())
         result2["n_iterations"].append(it2)
